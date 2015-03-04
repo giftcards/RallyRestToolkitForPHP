@@ -1,0 +1,21 @@
+{
+  "name": "rallytools/rallyrestroolkit",
+  "description": "This is a simple but effective package to communicate back and forth with Rally.",
+  "keywords": ["rally"],
+  "homepage": "https://github.com/RallyTools/RallyRestToolkitForPHP",
+  "minimum-stability": "dev",
+  "license": "proprietary",
+  "require": {
+    "php": ">=5.3.0"
+  },
+  "autoload": {
+    "psr-4": {
+      "Yahoo\\Connectors\\": ""
+    }
+  },
+  "extra": {
+    "branch-alias": {
+      "dev-master": "0.1.x-dev"
+    }
+  }
+}
