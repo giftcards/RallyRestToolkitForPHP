@@ -94,7 +94,7 @@ class Rally {
     $this->_setopt(CURLOPT_VERBOSE, $this->_debug);
     $this->_setopt(CURLOPT_USERAGENT, $this->_agent);
     $this->_setopt(CURLOPT_HEADER, 0);
-    $this->_setopt(CURLOPT_COOKIEFILE);
+    $this->_setopt(CURLOPT_COOKIEFILE, '/tmp/php_rally_cookie_file');
     // Authentication
     $this->_setopt(CURLOPT_USERPWD, "$username:$password");
     $this->_setopt(CURLOPT_HTTPAUTH, CURLAUTH_ANY);
