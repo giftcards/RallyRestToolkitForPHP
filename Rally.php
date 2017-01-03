@@ -69,6 +69,7 @@ class Rally {
    'initiative' => 'portfolioitem/initiative',
         'theme' => 'portfolioitem/theme',
   );
+  private $scope = '';
   // User object
   protected $_user = '';
   // User Security Token
@@ -94,7 +95,7 @@ class Rally {
     $this->_setopt(CURLOPT_VERBOSE, $this->_debug);
     $this->_setopt(CURLOPT_USERAGENT, $this->_agent);
     $this->_setopt(CURLOPT_HEADER, 0);
-    $this->_setopt(CURLOPT_COOKIEFILE);
+    $this->_setopt(CURLOPT_COOKIEFILE, '/tmp/php_rally_cookie_file');
     // Authentication
     $this->_setopt(CURLOPT_USERPWD, "$username:$password");
     $this->_setopt(CURLOPT_HTTPAUTH, CURLAUTH_ANY);
@@ -116,6 +117,14 @@ class Rally {
    */
   public function me() {
     return $this->_user['_ref'];
+  }
+
+  /**
+   * @param string $scope
+   */
+  public function setScope($scope)
+  {
+    $this->scope = $scope;
   }
 
   /**
@@ -183,14 +192,18 @@ class Rally {
    * @return array
    *   Returned Objects
    */
-  public function find($object, $query, $order = '', $fetch = true) {
+  public function find($object, $query, $order = '', $fetch = '') {
     $object = $this->_translate($object);
     $params = array(
       'query' => $query,
-      'fetch' => ($fetch ? 'true' : 'false'),
    'pagesize' => 100,
       'start' => 1,
     );
+
+    if( !empty($fetch)) {
+      $params['fetch'] = $fetch;
+    }
+
     if (!empty($order)) {
       $params['order'] = $order;
     }
@@ -382,7 +395,7 @@ class Rally {
    */
   protected function _execute($method) {
     $method = ltrim($method, '/');
-    $url = "https://{$this->_domain}/slm/webservice/{$this->_version}/{$method}";
+    $url = "https://{$this->_domain}/slm/webservice/{$this->_version}/{$this->scope}/{$method}";
 
     $this->_setopt(CURLOPT_URL, $url);
 
