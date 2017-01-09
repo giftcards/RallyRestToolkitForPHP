@@ -2,7 +2,7 @@
 
 namespace Yahoo\Connectors;
 
-use Exception;
+use \Exception;
 
 /**
  * Rally API Connector
@@ -47,34 +47,42 @@ use Exception;
 class Rally
 {
     // Curl Object
-    private $_curl;
+    private $curl;
     // Rally's Domain
-    private $_domain;
+    private $domain;
     // Just for debugging
-    private $_debug = false;
+    private $debug = false;
     // Some fancy user agent here
-    private $_agent = 'PHP - Rally Api - 2.0';
+    private $agent = 'PHP - Rally Api - 2.0';
     // Current API version
-    private $_version = 'v2.0';
+    private $version = 'v2.0';
     // Current Workspace
-    private $_workspace;
-    // These headers are required to get valid JSON responses
-    private $_headers_request = array(
-        'Content-Type: text/javascript'
-    );
+    private $workspace;
     // Silly object translation
-    private $_objectTranslation = array(
+    private $objectTranslation = array(
         'story' => 'hierarchicalrequirement',
         'userstory' => 'hierarchicalrequirement',
         'feature' => 'portfolioitem/feature',
         'initiative' => 'portfolioitem/initiative',
         'theme' => 'portfolioitem/theme',
+        'release' => 'release'
     );
-    private $scope = '';
+
     // User object
-    protected $_user = '';
+    protected $user = '';
+
     // User Security Token
-    protected $_securityToken;
+    protected $securityToken;
+
+    /**
+     * Project ID in Rally.
+     *
+     * To get the value go to the Project's Dashboard example URL: https://rally1.rallydev.com/#/xxxxxxxxxxxd/dashboard
+     * Copy the x's in the URL above excluding the "d" and that's the Project's ID
+     *
+     * @var int
+     */
+    protected $project = null;
 
     /**
      * Create Rally Api Object
@@ -88,46 +96,29 @@ class Rally
      */
     public function __construct($username, $password, $domain = 'rally1.rallydev.com')
     {
-        $this->_domain = $domain;
+        $this->domain = $domain;
 
-        $this->_curl = curl_init();
+        $this->curl = curl_init();
 
         $this->_setopt(CURLOPT_RETURNTRANSFER, true);
-        $this->_setopt(CURLOPT_HTTPHEADER, $this->_headers_request);
-        $this->_setopt(CURLOPT_VERBOSE, $this->_debug);
-        $this->_setopt(CURLOPT_USERAGENT, $this->_agent);
+        $this->_setopt(
+            CURLOPT_HTTPHEADER,
+            array(
+                'Content-Type: text/javascript'
+            )
+        );
+        $this->_setopt(CURLOPT_VERBOSE, $this->debug);
+        $this->_setopt(CURLOPT_USERAGENT, $this->agent);
         $this->_setopt(CURLOPT_HEADER, 0);
         $this->_setopt(CURLOPT_COOKIEFILE, '/tmp/php_rally_cookie_file');
         // Authentication
         $this->_setopt(CURLOPT_USERPWD, "$username:$password");
         $this->_setopt(CURLOPT_HTTPAUTH, CURLAUTH_ANY);
-
-        //Save the security token for PUT/POST/DELETE
-        $authResults = $this->_get('security/authorize');
-        $this->_securityToken = $authResults['SecurityToken'];
-
-        // Validate Login was Successful
-        $user_data = $this->find('user', "(EmailAddress = \"{$username}\")");
-        $this->_user = $user_data[0];
     }
 
-    /**
-     * Return Reference to User
-     *
-     * @return string
-     *   Reference link to User
-     */
-    public function me()
+    public function setProject($project)
     {
-        return $this->_user['_ref'];
-    }
-
-    /**
-     * @param string $scope
-     */
-    public function setScope($scope)
-    {
-        $this->scope = $scope;
+        $this->project = $project;
     }
 
     /**
@@ -144,8 +135,8 @@ class Rally
     protected function _translate($object)
     {
         $object = strtolower($object);
-        if (isset($this->_objectTranslation[$object])) {
-            return $this->_objectTranslation[$object];
+        if (isset($this->objectTranslation[$object])) {
+            return $this->objectTranslation[$object];
         }
         return $object;
     }
@@ -158,7 +149,7 @@ class Rally
      */
     public function setWorkspace($workspace_ref)
     {
-        $this->_workspace = $workspace_ref;
+        $this->workspace = $workspace_ref;
     }
 
     /**
@@ -182,56 +173,41 @@ class Rally
     }
 
     /**
-     * Find Rally objects
+     * Finds the objects in Rally allowing a query and search params to be sent into the system search
      *
-     * This method automatically traverses
-     * and strips out Rally API gibbledy-gook
-     *
-     * @param string $object
-     *   Rally Object Type
+     * @param $object
      * @param string $query
-     *   Query String
      * @param string $order
-     *   Field to sort on
-     * @param bool $fetch
-     *   Fetch all content
+     * @param array $fetch
+     * @param int $size
+     * @param int $start
      * @return array
-     *   Returned Objects
      */
-    public function find($object, $query, $order = '', $fetch = '')
+    public function find($object, $query = '', $order = '', $fetch = array(), $size = 100, $start = 1)
     {
         $object = $this->_translate($object);
         $params = array(
-            'query' => $query,
-            'pagesize' => 100,
-            'start' => 1,
+            'pagesize' => $size,
+            'start' => $start
         );
 
+        if (!empty($query)) {
+            $params['query'] = $query;
+        }
+
+        if (!empty($this->project)) {
+            $params['project'] = sprintf("/project/%s", $this->project);
+        }
+
         if (!empty($fetch)) {
-            $params['fetch'] = $fetch;
+            $params['fetch'] = implode(",", $fetch);
         }
 
         if (!empty($order)) {
             $params['order'] = $order;
         }
 
-        // Loop through and ask for results
-        $results = array();
-        for (; ;) { // I hate infinite loops
-            $objects = $this->_get($this->_addWorkspace("{$object}", $params));
-            $results = array_merge($results, $objects['Results']);
-
-            // Continue only if there are more
-            if ($objects['TotalResultCount'] > 99 + $params['start']) {
-                $params['start'] += 100;
-                continue;
-            }
-
-            // We're done, break
-            break;
-        }
-
-        return $results;
+        return $this->_get($this->_addWorkspace($object, $params));
     }
 
     /**
@@ -247,6 +223,23 @@ class Rally
     public function get($object, $id)
     {
         return reset($this->_get($this->_addWorkspace($this->getRef($object, $id))));
+    }
+
+    public function getByUrl($url)
+    {
+        $this->_setopt(CURLOPT_CUSTOMREQUEST, 'GET');
+        $this->_setopt(CURLOPT_POSTFIELDS, '');
+        $this->_setopt(CURLOPT_URL, $url);
+
+        $response = curl_exec($this->curl);
+
+        if (curl_errno($this->curl)) {
+            throw new RallyApiException(curl_error($this->curl));
+        }
+
+        $info = curl_getinfo($this->curl);
+
+        return $this->_result($response, $info);
     }
 
     /**
@@ -306,18 +299,15 @@ class Rally
     }
 
     /**
-     * Wraps Workspace around URL
-     *
-     * @param string $url
-     *   URL to access
+     * @param $url
      * @param array $params
-     *   Any additional parameters to put on the Query String
+     * @return string
      */
     protected function _addWorkspace($url, array $params = array())
     {
         // Add workspace
-        if ($this->_workspace) {
-            $params['workspace'] = $this->_workspace;
+        if ($this->workspace) {
+            $params['workspace'] = $this->workspace;
         }
 
         // Add params as url
@@ -350,18 +340,16 @@ class Rally
      * @param string $method
      *   Method of the API to execute
      * @param array $params
-     *   Paramters to pass
+     *   Parameters to pass
      * @return array
      *   API return data
      */
     protected function _post($method, array $params = array())
     {
         $this->_setopt(CURLOPT_CUSTOMREQUEST, 'POST');
-
-        $payload = json_encode(array('Content' => $params));
-        $this->_setopt(CURLOPT_POSTFIELDS, $payload);
-
-        return $this->_execute($method . "?key={$this->_securityToken}");
+        $this->_setopt(CURLOPT_POSTFIELDS, json_encode(array('Content' => $params)));
+        $securityToken = $this->getSecurityToken();
+        return $this->_execute(sprintf("%s?key=%s", $method, $securityToken));
     }
 
     /**
@@ -370,18 +358,16 @@ class Rally
      * @param string $method
      *   Method of the API to execute
      * @param array $params
-     *   Paramters to pass
+     *   Parameters to pass
      * @return array
      *   API return data
      */
     protected function _put($method, array $params = array())
     {
         $this->_setopt(CURLOPT_CUSTOMREQUEST, 'PUT');
-
-        $payload = json_encode(array('Content' => $params));
-        $this->_setopt(CURLOPT_POSTFIELDS, $payload);
-
-        return $this->_execute($method . "?key={$this->_securityToken}");
+        $this->_setopt(CURLOPT_POSTFIELDS, json_encode(array('Content' => $params)));
+        $securityToken = $this->getSecurityToken();
+        return $this->_execute(sprintf("%s?key=%s", $method, $securityToken));
     }
 
     /**
@@ -395,8 +381,8 @@ class Rally
     protected function _delete($method)
     {
         $this->_setopt(CURLOPT_CUSTOMREQUEST, 'DELETE');
-
-        return $this->_execute($method . "?key={$this->_securityToken}");
+        $securityToken = $this->getSecurityToken();
+        return $this->_execute(sprintf("%s?key=%s", $method, $securityToken));
     }
 
     /**
@@ -412,17 +398,17 @@ class Rally
     protected function _execute($method)
     {
         $method = ltrim($method, '/');
-        $url = "https://{$this->_domain}/slm/webservice/{$this->_version}/{$this->scope}/{$method}";
+        $url = sprintf("https://%s/slm/webservice/%s/%s", $this->domain, $this->version, $method);
 
         $this->_setopt(CURLOPT_URL, $url);
 
-        $response = curl_exec($this->_curl);
+        $response = curl_exec($this->curl);
 
-        if (curl_errno($this->_curl)) {
-            throw new RallyApiException(curl_error($this->_curl));
+        if (curl_errno($this->curl)) {
+            throw new RallyApiException(curl_error($this->curl));
         }
 
-        $info = curl_getinfo($this->_curl);
+        $info = curl_getinfo($this->curl);
 
         return $this->_result($response, $info);
     }
@@ -467,20 +453,30 @@ class Rally
     }
 
     /**
-     * Wrapper for curp_setopt
+     * Wrapper for curl_setopt
      *
      * @param string $option
      *   the CURLOPT_XXX option to set
-     * @param varied $value
+     * @param mixed $value
      *   the value
      */
     protected function _setopt($option, $value)
     {
-        curl_setopt($this->_curl, $option, $value);
+        curl_setopt($this->curl, $option, $value);
+    }
+
+    protected function getSecurityToken()
+    {
+        if (!$this->securityToken) {
+            $authResults = $this->_get('security/authorize');
+            $this->securityToken = $authResults['SecurityToken'];
+        }
+
+        return $this->securityToken;
     }
 }
 
-class RallyApiException extends Exception
+class RallyApiException extends \Exception
 {
 }
 
